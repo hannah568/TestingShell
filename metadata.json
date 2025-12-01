@@ -1,0 +1,5 @@
+{
+  "name": "Shell Game Master",
+  "description": "A modern, interactive 3D-style shell game where players track a hidden ball under shuffling cups. Features smooth animations, streak tracking, and difficulty settings.",
+  "requestFramePermissions": []
+}
