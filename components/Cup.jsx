@@ -1,7 +1,7 @@
-import React from 'react';
-import { CupProps } from '../types';
 
-export const Cup: React.FC<CupProps> = ({
+import React from 'react';
+
+export const Cup = ({
   id,
   slotIndex,
   hasBall,

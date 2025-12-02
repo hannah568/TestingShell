@@ -5,7 +5,107 @@ import { Cup } from './Cup';
 import { Trophy, RefreshCcw, Settings, Play, Gamepad2, User, UserCheck, ChevronLeft, Gauge, Zap, Flame, Skull, TrendingUp, GripHorizontal, RotateCcw, Check, Pencil } from 'lucide-react';
 
 // Utils
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+// -- Sound System --
+const playSound = (type) => {
+  if (typeof window === 'undefined') return;
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContext) return;
+  
+  try {
+    const ctx = new AudioContext();
+    const now = ctx.currentTime;
+    const gain = ctx.createGain();
+    gain.connect(ctx.destination);
+
+    // Master Volume
+    const volume = 0.1; 
+
+    switch (type) {
+      case 'win': {
+        // C Major Arpeggio (Success sound)
+        const notes = [523.25, 659.25, 783.99, 1046.50];
+        notes.forEach((freq, i) => {
+          const osc = ctx.createOscillator();
+          osc.type = 'sine';
+          osc.frequency.value = freq;
+          osc.connect(gain);
+          osc.start(now + i * 0.08);
+          osc.stop(now + i * 0.08 + 0.2);
+        });
+        gain.gain.setValueAtTime(volume, now);
+        gain.gain.linearRampToValueAtTime(0, now + 0.6);
+        break;
+      }
+      case 'loss': {
+        // Discordant slide (Failure sound)
+        const osc = ctx.createOscillator();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(150, now);
+        osc.frequency.linearRampToValueAtTime(50, now + 0.4);
+        osc.connect(gain);
+        gain.gain.setValueAtTime(volume, now);
+        gain.gain.linearRampToValueAtTime(0, now + 0.4);
+        osc.start(now);
+        osc.stop(now + 0.4);
+        break;
+      }
+      case 'shuffle': {
+         // Filtered Noise (Swishing sound)
+         const bufferSize = ctx.sampleRate * 0.1; // 0.1s duration
+         const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+         const data = buffer.getChannelData(0);
+         for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+         
+         const noise = ctx.createBufferSource();
+         noise.buffer = buffer;
+         
+         const filter = ctx.createBiquadFilter();
+         filter.type = 'bandpass';
+         filter.frequency.setValueAtTime(400, now);
+         filter.Q.value = 1;
+
+         noise.connect(filter);
+         filter.connect(gain);
+         
+         gain.gain.setValueAtTime(volume * 0.6, now);
+         gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+         
+         noise.start(now);
+         break;
+      }
+      case 'click': {
+        // High blip (UI interaction)
+        const osc = ctx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(800, now);
+        osc.frequency.exponentialRampToValueAtTime(300, now + 0.1);
+        osc.connect(gain);
+        gain.gain.setValueAtTime(volume * 0.5, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+        osc.start(now);
+        osc.stop(now + 0.1);
+        break;
+      }
+      case 'start': {
+        // Rising tone (Game Start)
+        const osc = ctx.createOscillator();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(440, now);
+        osc.frequency.linearRampToValueAtTime(880, now + 0.3);
+        osc.connect(gain);
+        gain.gain.setValueAtTime(volume, now);
+        gain.gain.linearRampToValueAtTime(0, now + 0.3);
+        osc.start(now);
+        osc.stop(now + 0.3);
+        break;
+      }
+    }
+  } catch (e) {
+    console.error("Audio Playback Error", e);
+  }
+};
 
 // -- Visual Effects Components --
 
@@ -76,7 +176,6 @@ const FireworksDisplay = () => {
                 key={i}
                 className={`absolute w-2 h-2 rounded-full ${burst.color} animate-firework-particle shadow-[0_0_10px_currentColor]`}
                 style={{
-                    // @ts-ignore
                     '--tx': tx, '--ty': ty,
                     animationDelay: `${bIdx * 0.1}s`
                 }}
@@ -108,7 +207,6 @@ const BombLossEffect = () => {
                         key={i}
                         className="absolute text-4xl md:text-6xl font-black text-white bg-red-600 px-4 py-2 uppercase tracking-tighter drop-shadow-2xl animate-fly-word border-4 border-white rounded-lg shadow-lg"
                         style={{
-                            // @ts-ignore
                             '--endX': endX, '--endY': endY, '--rot': rot, '--endRot': endRot,
                             left: '50%', top: '50%',
                             animationDelay: `${i * 0.05}s`
@@ -127,7 +225,6 @@ const BombLossEffect = () => {
                         className="absolute w-3 h-3 bg-slate-900 animate-debris rounded-sm"
                         style={{
                             left: '50%', top: '50%',
-                            // @ts-ignore
                             '--dx': dx, '--dy': dy
                         }}
                      />
@@ -137,7 +234,7 @@ const BombLossEffect = () => {
     )
 }
 
-const StreakCounter = ({ count }: { count: number }) => (
+const StreakCounter = ({ count }) => (
   <div className="flex flex-col items-center bg-slate-900/80 border border-orange-500/30 px-4 py-2 rounded-xl shadow-lg min-w-[90px] backdrop-blur-sm">
     <span className="text-[10px] font-bold uppercase tracking-widest text-orange-400 mb-1">Streak</span>
     <div className="flex items-center gap-2">
@@ -148,37 +245,37 @@ const StreakCounter = ({ count }: { count: number }) => (
 );
 
 
-export const GameArea: React.FC = () => {
+export const GameArea = () => {
   // -- State --
-  const [setupStep, setSetupStep] = useState<'PLAYERS' | 'NAMES' | 'DIFFICULTY' | 'GAME'>('PLAYERS');
-  const [status, setStatus] = useState<GameStatus>(GameStatus.IDLE);
+  const [setupStep, setSetupStep] = useState('PLAYERS');
+  const [status, setStatus] = useState(GameStatus.IDLE);
   
   // Game Configuration
-  const [difficulty, setDifficulty] = useState<Difficulty>(Difficulty.EASY);
-  const [isDynamic, setIsDynamic] = useState<boolean>(false);
-  const [playerCount, setPlayerCount] = useState<number>(1);
-  const [playerNames, setPlayerNames] = useState<string[]>(['Player 1']);
-  const [numCups, setNumCups] = useState<number>(3); 
+  const [difficulty, setDifficulty] = useState(Difficulty.EASY);
+  const [isDynamic, setIsDynamic] = useState(false);
+  const [playerCount, setPlayerCount] = useState(1);
+  const [playerNames, setPlayerNames] = useState(['Player 1']);
+  const [numCups, setNumCups] = useState(3); 
   
   // Gameplay State
-  const [activePlayer, setActivePlayer] = useState<number>(0); 
-  const [scores, setScores] = useState<number[]>([0, 0, 0, 0]);
-  const [winningCupId, setWinningCupId] = useState<number>(1);
+  const [activePlayer, setActivePlayer] = useState(0); 
+  const [scores, setScores] = useState([0, 0, 0, 0]);
+  const [winningCupId, setWinningCupId] = useState(1);
   
   // Dynamic Arrays based on numCups
-  const [cupSlots, setCupSlots] = useState<number[]>([0, 1, 2]); 
-  const [revealedCups, setRevealedCups] = useState<boolean[]>([false, false, false]);
-  const [cupDepths, setCupDepths] = useState<number[]>([0, 0, 0, 0, 0]); // Stores depth state for 3D shuffle effect
+  const [cupSlots, setCupSlots] = useState([0, 1, 2]); 
+  const [revealedCups, setRevealedCups] = useState([false, false, false]);
+  const [cupDepths, setCupDepths] = useState([0, 0, 0, 0, 0]); // Stores depth state for 3D shuffle effect
   
   // Animation Control
-  const [moveDuration, setMoveDuration] = useState<number>(500);
+  const [moveDuration, setMoveDuration] = useState(500);
   
   const [message, setMessage] = useState("Find the hidden ball!");
-  const [guessId, setGuessId] = useState<number | null>(null);
+  const [guessId, setGuessId] = useState(null);
   
   // Auto Play / Restart State
-  const [isAutoPlaying, setIsAutoPlaying] = useState<boolean>(false);
-  const [isRestarting, setIsRestarting] = useState<boolean>(false);
+  const [isAutoPlaying, setIsAutoPlaying] = useState(false);
+  const [isRestarting, setIsRestarting] = useState(false);
 
   // -- Refs --
   // Use a ref to track cup slots synchronously for animations to avoid closure staleness during restarts
@@ -189,12 +286,13 @@ export const GameArea: React.FC = () => {
   }, [cupSlots]);
 
   // -- Config based on difficulty --
-  const getDifficultySettings = useCallback((diff: Difficulty) => {
+  const getDifficultySettings = useCallback((diff) => {
     switch (diff) {
       case Difficulty.EASY: return { swaps: 5, speed: 600, label: "Easy", icon: Gauge, color: "text-green-400", border: "border-green-500/50", bg: "hover:bg-green-500/10", ring: "ring-green-500/20" };
       case Difficulty.MEDIUM: return { swaps: 10, speed: 450, label: "Medium", icon: Zap, color: "text-yellow-400", border: "border-yellow-500/50", bg: "hover:bg-yellow-500/10", ring: "ring-yellow-500/20" };
       case Difficulty.HARD: return { swaps: 15, speed: 320, label: "Hard", icon: Flame, color: "text-orange-400", border: "border-orange-500/50", bg: "hover:bg-orange-500/10", ring: "ring-orange-500/20" };
       case Difficulty.EXTREME: return { swaps: 25, speed: 220, label: "Extreme", icon: Skull, color: "text-red-500", border: "border-red-500/50", bg: "hover:bg-red-500/10", ring: "ring-red-500/20" };
+      default: return { swaps: 5, speed: 600, label: "Easy", icon: Gauge, color: "text-green-400", border: "border-green-500/50", bg: "hover:bg-green-500/10", ring: "ring-green-500/20" };
     }
   }, []);
 
@@ -207,7 +305,7 @@ export const GameArea: React.FC = () => {
     return Difficulty.EXTREME;
   }, [difficulty, isDynamic, scores, activePlayer]);
 
-  const resetRound = useCallback((nextPlayerIndex?: number) => {
+  const resetRound = useCallback((nextPlayerIndex) => {
     setMoveDuration(500); // Standard speed for resetting positions
     setRevealedCups(new Array(numCups).fill(false));
     setGuessId(null);
@@ -233,7 +331,8 @@ export const GameArea: React.FC = () => {
 
   // -- Actions --
 
-  const handleSelectPlayers = (count: number) => {
+  const handleSelectPlayers = (count) => {
+    playSound('click');
     setPlayerCount(count);
     setPlayerNames(Array.from({length: count}, (_, i) => `Player ${i+1}`));
     setScores(new Array(count).fill(0));
@@ -241,17 +340,19 @@ export const GameArea: React.FC = () => {
     setSetupStep('NAMES');
   };
 
-  const handleNameChange = (index: number, name: string) => {
+  const handleNameChange = (index, name) => {
     const newNames = [...playerNames];
     newNames[index] = name;
     setPlayerNames(newNames);
   };
 
   const handleNamesSubmit = () => {
+    playSound('click');
     setSetupStep('DIFFICULTY');
   };
 
-  const handleSelectDifficulty = (diff: Difficulty | 'DYNAMIC') => {
+  const handleSelectDifficulty = (diff) => {
+    playSound('click');
     if (diff === 'DYNAMIC') {
       setIsDynamic(true);
       setDifficulty(Difficulty.EASY); 
@@ -262,6 +363,7 @@ export const GameArea: React.FC = () => {
   };
 
   const handleStartGame = () => {
+    playSound('start');
     setSetupStep('GAME');
   };
 
@@ -274,6 +376,7 @@ export const GameArea: React.FC = () => {
   const handleStartShuffle = useCallback(async () => {
     if (status === GameStatus.SHUFFLING) return;
 
+    playSound('click');
     setRevealedCups(new Array(numCups).fill(false));
     setStatus(GameStatus.SHUFFLING);
     
@@ -330,7 +433,7 @@ export const GameArea: React.FC = () => {
       currentSlots[cupIndexB] = slotA;
 
       setCupSlots([...currentSlots]); 
-      
+      playSound('shuffle'); // Shuffle Sound
       await sleep(speed);
     }
 
@@ -376,7 +479,7 @@ export const GameArea: React.FC = () => {
   }, [isRestarting, resetRound, handleStartShuffle]);
 
 
-  const handleCupClick = (id: number) => {
+  const handleCupClick = (id) => {
     if (status !== GameStatus.GUESSING) return;
 
     setGuessId(id);
@@ -391,6 +494,7 @@ export const GameArea: React.FC = () => {
     setStatus(GameStatus.REVEALED);
 
     if (isWin) {
+      playSound('win'); // Win Sound
       setScores(prev => {
         const newScores = [...prev];
         newScores[activePlayer] += 1;
@@ -408,6 +512,7 @@ export const GameArea: React.FC = () => {
       setMessage(winMsg);
       setIsAutoPlaying(true);
     } else {
+      playSound('loss'); // Loss Sound
       setIsAutoPlaying(false); 
       if (playerCount === 1) {
           setMessage(`Game Over!`);
@@ -418,11 +523,13 @@ export const GameArea: React.FC = () => {
   };
 
   const handleNextTurn = () => {
+    playSound('click');
     const nextPlayer = (activePlayer + 1) % playerCount;
     resetRound(nextPlayer);
   };
 
   const handleRestartGame = () => {
+    playSound('click');
     setSetupStep('PLAYERS');
     setScores([0,0,0,0]);
     setPlayerCount(1);
@@ -438,6 +545,7 @@ export const GameArea: React.FC = () => {
   };
 
   const handleRetry = () => {
+    playSound('click');
     setScores(scores.map(() => 0)); 
     setIsAutoPlaying(false);
     setIsRestarting(true);
