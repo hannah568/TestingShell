@@ -1,4 +1,3 @@
-
 export const GameStatus = {
   IDLE: 'IDLE',
   SHUFFLING: 'SHUFFLING',

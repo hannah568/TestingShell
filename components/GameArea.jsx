@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { GameStatus, Difficulty } from '../types';
 import { Cup } from './Cup';
